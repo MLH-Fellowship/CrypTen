@@ -147,6 +147,8 @@ class MPCTensor(CrypTensor):
         self.ptype = ptype
         self._mac = 0
 
+        self._mac = 0
+
     @staticmethod
     def new(*args, **kwargs):
         """
