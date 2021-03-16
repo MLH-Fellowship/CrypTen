@@ -61,9 +61,6 @@ class TestMPC(object):
         self.assertTrue(hasattr(encrypted_tensor, "_mac"), "_mac attribute failed to propagate")
         self.assertEqual(encrypted_tensor._mac, 0, "_mac attribute has incorrect value")
 
-        self.assertTrue(hasattr(encrypted_tensor, "_mac"), "_mac attribute failed to propagate")
-        self.assertEqual(encrypted_tensor._mac, 0, "_mac attribute has incorrect value")
-
     def _check_tuple(self, encrypted_tuple, reference, msg, tolerance=None):
         self.assertTrue(isinstance(encrypted_tuple, tuple))
         self.assertEqual(len(encrypted_tuple), len(reference))
