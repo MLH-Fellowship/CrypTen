@@ -37,27 +37,34 @@ class TestMPC(object):
         tensor = encrypted_tensor.get_plain_text(dst=dst)
         if dst is not None and dst != self.rank:
             self.assertIsNone(tensor)
-            return
+        else:
+            # Check sizes match
+            self.assertTrue(tensor.size() == reference.size(), msg)
 
-        # Check sizes match
-        self.assertTrue(tensor.size() == reference.size(), msg)
+            self.assertTrue(is_float_tensor(reference), "reference must be a float")
 
-        self.assertTrue(is_float_tensor(reference), "reference must be a float")
+            if tensor.device != reference.device:
+                tensor = tensor.cpu()
+                reference = reference.cpu()
 
-        if tensor.device != reference.device:
-            tensor = tensor.cpu()
-            reference = reference.cpu()
+            diff = (tensor - reference).abs_()
+            norm_diff = diff.div(tensor.abs() + reference.abs()).abs_()
+            test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.1)
+            test_passed = test_passed.gt(0).all().item() == 1
+            if not test_passed:
+                logging.info(msg)
+                logging.info("Result %s" % tensor)
+                logging.info("Reference %s" % reference)
+                logging.info("Result - Reference = %s" % (tensor - reference))
+            self.assertTrue(test_passed, msg=msg)
+            self.assertTrue(hasattr(encrypted_tensor, "_mac"), "_mac attribute failed to propagate")
 
-        diff = (tensor - reference).abs_()
-        norm_diff = diff.div(tensor.abs() + reference.abs()).abs_()
-        test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.1)
-        test_passed = test_passed.gt(0).all().item() == 1
-        if not test_passed:
-            logging.info(msg)
-            logging.info("Result %s" % tensor)
-            logging.info("Reference %s" % reference)
-            logging.info("Result - Reference = %s" % (tensor - reference))
-        self.assertTrue(test_passed, msg=msg)
+        if dst is None or dst == self.rank:
+            self.assertTrue(encrypted_tensor._tensor.reveal(dst=dst).mul(MPCTensor.alpha.reveal(dst=dst)).eq(encrypted_tensor._mac.reveal(dst=dst)).all(), msg="Mac Arithmetic Mismatch")
+        elif dst is not None:
+            self.assertIsNone(encrypted_tensor._tensor.reveal(dst=dst))
+            self.assertIsNone(MPCTensor.alpha.reveal(dst=dst))
+            self.assertIsNone(encrypted_tensor._mac.reveal(dst=dst))
 
     def _check_tuple(self, encrypted_tuple, reference, msg, tolerance=None):
         self.assertTrue(isinstance(encrypted_tuple, tuple))
