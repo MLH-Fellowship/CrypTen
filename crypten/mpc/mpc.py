@@ -273,7 +273,7 @@ class MPCTensor(CrypTensor):
 
         if not private:
             result._tensor ^= y
-            result._mac += y._mac ^ (result.alpha & y)
+            result._mac ^= y._mac ^ (result.alpha & y)
         else:
             result._tensor ^= y._tensor
             result._mac ^= y._mac
