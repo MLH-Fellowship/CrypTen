@@ -245,6 +245,20 @@ class MPCTensor(CrypTensor):
 
         return self
 
+    def mul(self, y):
+        return self.clone().mul_(y)
+
+    def mul_(self, y):
+        """added multiplication according to MAC"""
+        private = isinstance(y, MPCTensor)
+
+        if not private:
+            self._tensor *= y
+            scaled_y = self._tensor.encoder.encode(y)
+            self._mac *= scaled_y
+        else:
+            raise NotImplementedError
+
     def xor(self, y):
         """added xor according to MAC"""
         private = isinstance(y, MPCTensor)
@@ -1280,7 +1294,6 @@ OOP_UNARY_FUNCTIONS = {
 }
 
 OOP_BINARY_FUNCTIONS = {
-    "mul": Ptype.arithmetic,
     "matmul": Ptype.arithmetic,
     "conv1d": Ptype.arithmetic,
     "conv2d": Ptype.arithmetic,
@@ -1300,7 +1313,6 @@ INPLACE_UNARY_FUNCTIONS = {
 }
 
 INPLACE_BINARY_FUNCTIONS = {
-    "mul_": Ptype.arithmetic,
     "__ior__": Ptype.binary,
     "__ixor__": Ptype.binary,
     "__iand__": Ptype.binary,
