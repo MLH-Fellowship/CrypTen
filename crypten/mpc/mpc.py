@@ -280,6 +280,24 @@ class MPCTensor(CrypTensor):
 
         return result
 
+    def b_and(self, y):
+        """added and according to MAC"""
+        private = isinstance(y, MPCTensor)
+
+        result = self.clone()
+        if isinstance(y, BinarySharedTensor):
+            broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
+            result.share = broadcast_tensors[0].clone()
+        elif is_tensor(y):
+            broadcast_tensors = torch.broadcast_tensors(result.share, y)
+            result.share = broadcast_tensors[0].clone()
+    
+        if not private:
+            result._tensor = result._tensor and y
+            result._mac = result._mac and y
+        else:
+            raise NotImplementedError
+
     def neg_(self):
         """Negate the tensor's values"""
         self._mac.neg_()
