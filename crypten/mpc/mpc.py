@@ -1318,9 +1318,7 @@ OOP_BINARY_FUNCTIONS = {
     "conv_transpose2d": Ptype.arithmetic,
     "dot": Ptype.arithmetic,
     "ger": Ptype.arithmetic,
-    "__xor__": Ptype.binary,
     "__or__": Ptype.binary,
-    "__and__": Ptype.binary,
 }
 
 INPLACE_UNARY_FUNCTIONS = {
