@@ -5,7 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from crypten.debug import debug_mode
 import logging
 from dataclasses import dataclass
 from functools import wraps
@@ -13,7 +12,7 @@ from functools import wraps
 import crypten
 import torch
 from crypten import communicator as comm
-from crypten.common.tensor_types import is_float_tensor, is_int_tensor, is_tensor
+from crypten.common.tensor_types import is_tensor
 from crypten.common.util import (
     ConfigBase,
     adaptive_pool2d_helper,
@@ -259,7 +258,7 @@ class MPCTensor(CrypTensor):
         else:
             raise NotImplementedError
 
-    def xor(self, y):
+    def __xor__(self, y):
         """added xor according to MAC"""
         private = isinstance(y, MPCTensor)
 
@@ -280,7 +279,7 @@ class MPCTensor(CrypTensor):
 
         return result
 
-    def b_and(self, y):
+    def __and__(self, y):
         """added and according to MAC"""
         private = isinstance(y, MPCTensor)
 
