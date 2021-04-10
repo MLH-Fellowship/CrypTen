@@ -108,6 +108,8 @@ class ConfigManager(ConfigBase):
 
 class MPCTensor(CrypTensor):
     alpha = None
+    ACTIVE_SECURITY = False
+
     def __init__(self, tensor, ptype=Ptype.arithmetic, device=None, *args, **kwargs):
         """
         Creates the shared tensor from the input `tensor` provided by party `src`.
@@ -148,13 +150,14 @@ class MPCTensor(CrypTensor):
         self.ptype = ptype
         self._mac = None
 
-        if MPCTensor.alpha is None:
-            share = generate_random_ring_element(size=(), device=device)
-            MPCTensor.alpha = tensor_type.from_shares(share, precision=0, device=device)
+        if MPCTensor.ACTIVITY_SECURITY:
+            if MPCTensor.alpha is None:
+                share = generate_random_ring_element(size=(), device=device)
+                MPCTensor.alpha = tensor_type.from_shares(share, precision=0, device=device)
 
-        if tensor != []:
-            self._mac = self._tensor * MPCTensor.alpha
-            self._mac.encoder = FixedPointEncoder(precision_bits=0)
+            if tensor != []:
+                self._mac = self._tensor * MPCTensor.alpha
+                self._mac.encoder = FixedPointEncoder(precision_bits=0)
 
     @staticmethod
     def new(*args, **kwargs):
@@ -232,15 +235,17 @@ class MPCTensor(CrypTensor):
 
     def add_(self, y):
         """added addition according to MAC"""
-        private = isinstance(y, MPCTensor)
 
-        if not private:
-            self._tensor += y
-            scaled_y = self._tensor.encoder.encode(y)
-            self._mac += self.alpha * scaled_y
-        else:
-            self._tensor += y._tensor
-            self._mac += y._mac
+        if self._mac is not None:
+            private = isinstance(y, MPCTensor)
+
+            if not private:
+                self._tensor += y
+                scaled_y = self._tensor.encoder.encode(y)
+                self._mac += self.alpha * scaled_y
+            else:
+                self._tensor += y._tensor
+                self._mac += y._mac
 
         return self
 
@@ -249,58 +254,71 @@ class MPCTensor(CrypTensor):
 
     def mul_(self, y):
         """added multiplication according to MAC"""
-        private = isinstance(y, MPCTensor)
+        
+        if self._mac is not None:
+            private = isinstance(y, MPCTensor)
 
-        if not private:
-            self._tensor *= y
-            scaled_y = self._tensor.encoder.encode(y)
-            self._mac *= scaled_y
-        else:
-            raise NotImplementedError
+            if not private:
+                self._tensor *= y
+                scaled_y = self._tensor.encoder.encode(y)
+                self._mac *= scaled_y
+            else:
+                raise NotImplementedError
+            
+        return self
 
     def __xor__(self, y):
         """added xor according to MAC"""
-        private = isinstance(y, MPCTensor)
-
         result = self.clone()
-        if isinstance(y, BinarySharedTensor):
-            broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
-            result.share = broadcast_tensors[0].clone()
-        elif is_tensor(y):
-            broadcast_tensors = torch.broadcast_tensors(result.share, y)
-            result.share = broadcast_tensors[0].clone()
 
-        if not private:
-            result._tensor ^= y
-            result._mac ^= y._mac ^ (result.alpha & y)
-        else:
-            result._tensor ^= y._tensor
-            result._mac ^= y._mac
+        if self._mac is not None:
+            private = isinstance(y, MPCTensor)
+
+            if isinstance(y, BinarySharedTensor):
+                broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
+                result.share = broadcast_tensors[0].clone()
+            elif is_tensor(y):
+                broadcast_tensors = torch.broadcast_tensors(result.share, y)
+                result.share = broadcast_tensors[0].clone()
+
+            if not private:
+                result._tensor ^= y
+                result._mac ^= y._mac ^ (result.alpha & y)
+            else:
+                result._tensor ^= y._tensor
+                result._mac ^= y._mac
 
         return result
 
     def __and__(self, y):
         """added and according to MAC"""
-        private = isinstance(y, MPCTensor)
-
         result = self.clone()
-        if isinstance(y, BinarySharedTensor):
-            broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
-            result.share = broadcast_tensors[0].clone()
-        elif is_tensor(y):
-            broadcast_tensors = torch.broadcast_tensors(result.share, y)
-            result.share = broadcast_tensors[0].clone()
-    
-        if not private:
-            result._tensor = result._tensor and y
-            result._mac = result._mac and y
-        else:
-            raise NotImplementedError
+
+        if self._mac is not None:
+            private = isinstance(y, MPCTensor)
+
+            if isinstance(y, BinarySharedTensor):
+                broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
+                result.share = broadcast_tensors[0].clone()
+            elif is_tensor(y):
+                broadcast_tensors = torch.broadcast_tensors(result.share, y)
+                result.share = broadcast_tensors[0].clone()
+        
+            if not private:
+                result._tensor = result._tensor and y
+                result._mac = result._mac and y
+            else:
+                raise NotImplementedError
+
+        return result
 
     def neg_(self):
         """Negate the tensor's values"""
-        self._mac.neg_()
-        self._tensor.neg_()
+
+        if self._mac is not None:
+            self._mac.neg_()
+            self._tensor.neg_()
+
         return self
 
     def neg(self):
