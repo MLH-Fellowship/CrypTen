@@ -180,7 +180,8 @@ class MPCTensor(CrypTensor):
         result = MPCTensor([])
         result._tensor = self._tensor.clone()
         result.ptype = self.ptype
-        result._mac = self._mac.clone()
+        if self._mac is not None:
+            result._mac = self._mac.clone()
         return result
 
     def shallow_copy(self):
@@ -254,7 +255,7 @@ class MPCTensor(CrypTensor):
 
     def mul_(self, y):
         """added multiplication according to MAC"""
-        
+
         if self._mac is not None:
             private = isinstance(y, MPCTensor)
 
@@ -264,28 +265,29 @@ class MPCTensor(CrypTensor):
                 self._mac *= scaled_y
             else:
                 raise NotImplementedError
-            
+
         return self
 
     def __xor__(self, y):
         """added xor according to MAC"""
         result = self.clone()
 
-        if self._mac is not None:
-            private = isinstance(y, MPCTensor)
+        private = isinstance(y, MPCTensor)
 
-            if isinstance(y, BinarySharedTensor):
-                broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
-                result.share = broadcast_tensors[0].clone()
-            elif is_tensor(y):
-                broadcast_tensors = torch.broadcast_tensors(result.share, y)
-                result.share = broadcast_tensors[0].clone()
+        if isinstance(y, BinarySharedTensor):
+            broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
+            result.share = broadcast_tensors[0].clone()
+        elif is_tensor(y):
+            broadcast_tensors = torch.broadcast_tensors(result.share, y)
+            result.share = broadcast_tensors[0].clone()
 
-            if not private:
-                result._tensor ^= y
+        if not private:
+            result._tensor ^= y
+            if self._mac is not None:
                 result._mac ^= y._mac ^ (result.alpha & y)
-            else:
-                result._tensor ^= y._tensor
+        else:
+            result._tensor ^= y._tensor
+            if self._mac is not None:
                 result._mac ^= y._mac
 
         return result
@@ -294,21 +296,21 @@ class MPCTensor(CrypTensor):
         """added and according to MAC"""
         result = self.clone()
 
-        if self._mac is not None:
-            private = isinstance(y, MPCTensor)
+        private = isinstance(y, MPCTensor)
 
-            if isinstance(y, BinarySharedTensor):
-                broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
-                result.share = broadcast_tensors[0].clone()
-            elif is_tensor(y):
-                broadcast_tensors = torch.broadcast_tensors(result.share, y)
-                result.share = broadcast_tensors[0].clone()
-        
-            if not private:
-                result._tensor = result._tensor and y
-                result._mac = result._mac and y
-            else:
-                raise NotImplementedError
+        if isinstance(y, BinarySharedTensor):
+            broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
+            result.share = broadcast_tensors[0].clone()
+        elif is_tensor(y):
+            broadcast_tensors = torch.broadcast_tensors(result.share, y)
+            result.share = broadcast_tensors[0].clone()
+
+        if not private:
+            result._tensor = result._tensor & y
+            if self._mac is not None:
+                result._mac = result._mac & y
+        else:
+            raise NotImplementedError
 
         return result
 
@@ -317,7 +319,7 @@ class MPCTensor(CrypTensor):
 
         if self._mac is not None:
             self._mac.neg_()
-            self._tensor.neg_()
+        self._tensor.neg_()
 
         return self
 
