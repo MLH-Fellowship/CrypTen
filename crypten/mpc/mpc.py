@@ -150,7 +150,7 @@ class MPCTensor(CrypTensor):
         self.ptype = ptype
         self._mac = None
 
-        if MPCTensor.ACTIVITY_SECURITY:
+        if MPCTensor.ACTIVE_SECURITY:
             if MPCTensor.alpha is None:
                 share = generate_random_ring_element(size=(), device=device)
                 MPCTensor.alpha = tensor_type.from_shares(share, precision=0, device=device)
@@ -182,6 +182,8 @@ class MPCTensor(CrypTensor):
         result.ptype = self.ptype
         if self._mac is not None:
             result._mac = self._mac.clone()
+        else:
+            result._mac = None
         return result
 
     def shallow_copy(self):
@@ -237,34 +239,40 @@ class MPCTensor(CrypTensor):
     def add_(self, y):
         """added addition according to MAC"""
 
-        if self._mac is not None:
-            private = isinstance(y, MPCTensor)
+        private = isinstance(y, MPCTensor)
 
-            if not private:
-                self._tensor += y
-                scaled_y = self._tensor.encoder.encode(y)
+        if not private:
+            self._tensor += y
+            scaled_y = self._tensor.encoder.encode(y)
+            if self._mac is not None:
                 self._mac += self.alpha * scaled_y
-            else:
-                self._tensor += y._tensor
+
+        else:
+            self._tensor += y._tensor
+            if self._mac is not None:
                 self._mac += y._mac
 
         return self
 
     def mul(self, y):
+        if self._mac is None:
+            if isinstance(y, MPCTensor):
+                y = y._tensor
+            self._tensor = self._tensor.mul_(y)
         return self.clone().mul_(y)
 
     def mul_(self, y):
         """added multiplication according to MAC"""
 
-        if self._mac is not None:
-            private = isinstance(y, MPCTensor)
+        private = isinstance(y, MPCTensor)
 
-            if not private:
-                self._tensor *= y
-                scaled_y = self._tensor.encoder.encode(y)
+        if not private:
+            self._tensor *= y
+            scaled_y = self._tensor.encoder.encode(y)
+            if self._mac is not None:
                 self._mac *= scaled_y
-            else:
-                raise NotImplementedError
+        else:
+            raise NotImplementedError
 
         return self
 
