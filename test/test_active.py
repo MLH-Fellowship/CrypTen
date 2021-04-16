@@ -128,9 +128,9 @@ class TestActive(object):
         """Tests arithmetic functions on encrypted tensor."""
         arithmetic_functions = ["add", "add_", "sub", "sub_", "mul", "mul_"]
         for func in arithmetic_functions:
-            if func in ["mul", "mul_"]:
-                continue
             for tensor_type in [lambda x: x, MPCTensor]:
+                if func in ["mul", "mul_"] and tensor_type == MPCTensor:
+                    continue
                 tensor1 = self._get_random_test_tensor(is_float=True)
                 tensor2 = self._get_random_test_tensor(is_float=True)
                 encrypted = MPCTensor(tensor1)
@@ -178,38 +178,19 @@ class TestActive(object):
         # encrypted_out = encrypted.square()
         # self._check(encrypted_out, reference, "square failed")
 
-        # # Test radd, rsub, and rmul
-        # reference = 2 + tensor1
-        # encrypted = MPCTensor(tensor1)
-        # encrypted_out = 2 + encrypted
-        # self._check(encrypted_out, reference, "right add failed")
+        # Test radd, rsub, and rmul
+        reference = 2 + tensor1
+        encrypted = MPCTensor(tensor1)
+        encrypted_out = 2 + encrypted
+        self._check(encrypted_out, reference, "right add failed")
 
-        # reference = 2 - tensor1
-        # encrypted_out = 2 - encrypted
-        # self._check(encrypted_out, reference, "right sub failed")
+        reference = 2 - tensor1
+        encrypted_out = 2 - encrypted
+        self._check(encrypted_out, reference, "right sub failed")
 
-        # reference = 2 * tensor1
-        # encrypted_out = 2 * encrypted
-        # self._check(encrypted_out, reference, "right mul failed")
-
-    def test_div(self):
-        """Tests division of encrypted tensor by scalar and tensor."""
-        for function in ["div", "div_"]:
-            raise NotImplementedError
-            for scalar in [2, 2.0]:
-                tensor = self._get_random_test_tensor(is_float=True)
-
-                reference = tensor.float().div(scalar)
-                encrypted_tensor = MPCTensor(tensor)
-                encrypted_tensor = getattr(encrypted_tensor, function)(scalar)
-                self._check(encrypted_tensor, reference, "scalar division failed")
-
-                # multiply denominator by 10 to avoid dividing by small num
-                divisor = self._get_random_test_tensor(is_float=True, ex_zero=True) * 10
-                reference = tensor.div(divisor)
-                encrypted_tensor = MPCTensor(tensor)
-                encrypted_tensor = getattr(encrypted_tensor, function)(divisor)
-                self._check(encrypted_tensor, reference, "tensor division failed")
+        reference = 2 * tensor1
+        encrypted_out = 2 * encrypted
+        self._check(encrypted_out, reference, "right mul failed")
 
     def test_copy_clone(self):
         """Tests shallow_copy and clone of encrypted tensors."""
@@ -262,12 +243,15 @@ class TestTFP(MultiProcessTestCase, TestActive):
 
 class TestTTP(MultiProcessTestCase, TestActive):
     def setUp(self):
+        self.active_security = MPCTensor.ACTIVE_SECURITY
+        MPCTensor.ACTIVE_SECURITY = True
         self._original_provider = crypten.mpc.get_default_provider()
         crypten.CrypTensor.set_grad_enabled(False)
         crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
         super(TestTTP, self).setUp()
 
     def tearDown(self):
+        MPCTensor.ACTIVE_SECURITY = self.active_security
         crypten.mpc.set_default_provider(self._original_provider)
         crypten.CrypTensor.set_grad_enabled(True)
         super(TestTTP, self).tearDown()

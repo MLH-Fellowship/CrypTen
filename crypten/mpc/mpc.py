@@ -273,10 +273,9 @@ class MPCTensor(CrypTensor):
                 self._mac *= scaled_y
         else:
             if self._mac is None:
-                if private:
-                    y = y._tensor
-                self._tensor = self._tensor.mul_(y)
-
+                self._tensor = self._tensor.mul_(y._tensor)
+            else:
+                raise RuntimeError(...)
         return self
 
     def __xor__(self, y):
@@ -322,9 +321,9 @@ class MPCTensor(CrypTensor):
                 result._mac = result._mac & y
         else:
             if self._mac is None:
-                if private:
-                    y = y._tensor
-                self._tensor = self._tensor.mul_(y)
+                self._tensor = self._tensor.mul_(y._tensor)
+            else:
+                raise RuntimeError(...)
         return result
 
     def neg_(self):
