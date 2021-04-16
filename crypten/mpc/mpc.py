@@ -272,7 +272,10 @@ class MPCTensor(CrypTensor):
             if self._mac is not None:
                 self._mac *= scaled_y
         else:
-            raise NotImplementedError
+            if self._mac is None:
+                if private:
+                    y = y._tensor
+                self._tensor = self._tensor.mul_(y)
 
         return self
 
@@ -306,7 +309,7 @@ class MPCTensor(CrypTensor):
 
         private = isinstance(y, MPCTensor)
 
-        if isinstance(y, BinarySharedTensor):
+        if private:
             broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
             result.share = broadcast_tensors[0].clone()
         elif is_tensor(y):
@@ -318,8 +321,10 @@ class MPCTensor(CrypTensor):
             if self._mac is not None:
                 result._mac = result._mac & y
         else:
-            raise NotImplementedError
-
+            if self._mac is None:
+                if private:
+                    y = y._tensor
+                self._tensor = self._tensor.mul_(y)
         return result
 
     def neg_(self):
