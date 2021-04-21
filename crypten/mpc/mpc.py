@@ -284,7 +284,7 @@ class MPCTensor(CrypTensor):
 
         private = isinstance(y, MPCTensor)
 
-        if isinstance(y, BinarySharedTensor):
+        if isinstance(y, MPCTensor):
             broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
             result.share = broadcast_tensors[0].clone()
         elif is_tensor(y):

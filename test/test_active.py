@@ -25,7 +25,7 @@ from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
 class TestActive(object):
     """
-    This class tests all functions of MPCTensor.
+    This class tests some functions of MPCTensor.
     """
 
     def _get_random_test_tensor(self, *args, **kwargs):
@@ -126,11 +126,9 @@ class TestActive(object):
 
     def test_arithmetic(self):
         """Tests arithmetic functions on encrypted tensor."""
-        arithmetic_functions = ["add", "add_", "sub", "sub_", "mul", "mul_"]
+        arithmetic_functions = ["add", "add_", "sub", "sub_"]
         for func in arithmetic_functions:
             for tensor_type in [lambda x: x, MPCTensor]:
-                if func in ["mul", "mul_"] and tensor_type == MPCTensor:
-                    continue
                 tensor1 = self._get_random_test_tensor(is_float=True)
                 tensor2 = self._get_random_test_tensor(is_float=True)
                 encrypted = MPCTensor(tensor1)
@@ -171,14 +169,8 @@ class TestActive(object):
                 encrypted_out = getattr(encrypted1, func)(encrypted2)
                 self._check(encrypted_out, reference, "private %s failed" % func)
 
-        # test square
-        # tensor = self._get_random_test_tensor(is_float=True)
-        # reference = tensor * tensor
-        # encrypted = MPCTensor(tensor)
-        # encrypted_out = encrypted.square()
-        # self._check(encrypted_out, reference, "square failed")
 
-        # Test radd, rsub, and rmul
+        # Test radd, rsub
         reference = 2 + tensor1
         encrypted = MPCTensor(tensor1)
         encrypted_out = 2 + encrypted
@@ -187,10 +179,6 @@ class TestActive(object):
         reference = 2 - tensor1
         encrypted_out = 2 - encrypted
         self._check(encrypted_out, reference, "right sub failed")
-
-        reference = 2 * tensor1
-        encrypted_out = 2 * encrypted
-        self._check(encrypted_out, reference, "right mul failed")
 
     def test_copy_clone(self):
         """Tests shallow_copy and clone of encrypted tensors."""
