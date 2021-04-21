@@ -28,7 +28,7 @@ from .max_helper import _argmax_helper, _max_helper_all_tree_reductions
 from .primitives.binary import BinarySharedTensor
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
-
+from crypten.common.rng import generate_random_ring_element
 
 def mode(ptype, inplace=False):
     if inplace:
@@ -107,6 +107,9 @@ class ConfigManager(ConfigBase):
 
 
 class MPCTensor(CrypTensor):
+    alpha = None
+    ACTIVE_SECURITY = False
+
     def __init__(self, tensor, ptype=Ptype.arithmetic, device=None, *args, **kwargs):
         """
         Creates the shared tensor from the input `tensor` provided by party `src`.
@@ -140,12 +143,21 @@ class MPCTensor(CrypTensor):
 
         # create the MPCTensor:
         tensor_type = ptype.to_tensor()
-        if tensor is []:
+        if tensor == []:
             self._tensor = torch.tensor([], device=device)
         else:
             self._tensor = tensor_type(tensor=tensor, device=device, *args, **kwargs)
         self.ptype = ptype
-        self._mac = 0
+        self._mac = None
+
+        if MPCTensor.ACTIVE_SECURITY:
+            if MPCTensor.alpha is None:
+                share = generate_random_ring_element(size=(), device=device)
+                MPCTensor.alpha = tensor_type.from_shares(share, precision=0, device=device)
+
+            if tensor != []:
+                self._mac = self._tensor * MPCTensor.alpha
+                self._mac.encoder = FixedPointEncoder(precision_bits=0)
 
     @staticmethod
     def new(*args, **kwargs):
@@ -168,7 +180,10 @@ class MPCTensor(CrypTensor):
         result = MPCTensor([])
         result._tensor = self._tensor.clone()
         result.ptype = self.ptype
-        result._mac = self._mac
+        if self._mac is not None:
+            result._mac = self._mac.clone()
+        else:
+            result._mac = None
         return result
 
     def shallow_copy(self):
@@ -217,6 +232,121 @@ class MPCTensor(CrypTensor):
                 share = CUDALongTensor(share)
             self.share = share
             return self
+
+    def add(self, y):
+        return self.clone().add_(y)
+
+    def add_(self, y):
+        """added addition according to MAC"""
+
+        private = isinstance(y, MPCTensor)
+
+        if not private:
+            self._tensor += y
+            scaled_y = self._tensor.encoder.encode(y)
+            if self._mac is not None:
+                self._mac += self.alpha * scaled_y
+
+        else:
+            self._tensor += y._tensor
+            if self._mac is not None:
+                self._mac += y._mac
+
+        return self
+
+    def mul(self, y):
+        if self._mac is None:
+            if isinstance(y, MPCTensor):
+                y = y._tensor
+            self._tensor = self._tensor.mul_(y)
+        return self.clone().mul_(y)
+
+    def mul_(self, y):
+        """added multiplication according to MAC"""
+
+        private = isinstance(y, MPCTensor)
+
+        if not private:
+            self._tensor *= y
+            scaled_y = self._tensor.encoder.encode(y)
+            if self._mac is not None:
+                self._mac *= scaled_y
+        else:
+            if self._mac is None:
+                self._tensor = self._tensor.mul_(y._tensor)
+            else:
+                raise NotImplementedError
+        return self
+
+    def __xor__(self, y):
+        """added xor according to MAC"""
+        result = self.clone()
+
+        private = isinstance(y, MPCTensor)
+
+        if isinstance(y, MPCTensor):
+            broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
+            result.share = broadcast_tensors[0].clone()
+        elif is_tensor(y):
+            broadcast_tensors = torch.broadcast_tensors(result.share, y)
+            result.share = broadcast_tensors[0].clone()
+
+        if not private:
+            result._tensor ^= y
+            if self._mac is not None:
+                result._mac ^= y._mac ^ (result.alpha & y)
+        else:
+            result._tensor ^= y._tensor
+            if self._mac is not None:
+                result._mac ^= y._mac
+
+        return result
+
+    def __and__(self, y):
+        """added and according to MAC"""
+        result = self.clone()
+
+        private = isinstance(y, MPCTensor)
+
+        if private:
+            broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
+            result.share = broadcast_tensors[0].clone()
+        elif is_tensor(y):
+            broadcast_tensors = torch.broadcast_tensors(result.share, y)
+            result.share = broadcast_tensors[0].clone()
+
+        if not private:
+            result._tensor = result._tensor & y
+            if self._mac is not None:
+                result._mac = result._mac & y
+        else:
+            if self._mac is None:
+                self._tensor = self._tensor.mul_(y._tensor)
+            else:
+                raise NotImplementedError
+        return result
+
+    def neg_(self):
+        """Negate the tensor's values"""
+
+        if self._mac is not None:
+            self._mac.neg_()
+        self._tensor.neg_()
+
+        return self
+
+    def neg(self):
+        """Negate the tensor's values"""
+        return self.clone().neg_()
+
+    def __neg__(self):
+        return self.clone().neg_()
+
+    def sub_(self, y):
+        return self.add_(-y)
+
+    def sub(self, y):
+        return self.clone().sub_(y)
 
     def _to_ptype(self, ptype, **kwargs):
         r"""
@@ -1201,8 +1331,6 @@ OOP_UNARY_FUNCTIONS = {
     "square": Ptype.arithmetic,
     "mean": Ptype.arithmetic,
     "var": Ptype.arithmetic,
-    "neg": Ptype.arithmetic,
-    "__neg__": Ptype.arithmetic,
     "invert": Ptype.binary,
     "lshift": Ptype.binary,
     "rshift": Ptype.binary,
@@ -1215,9 +1343,6 @@ OOP_UNARY_FUNCTIONS = {
 }
 
 OOP_BINARY_FUNCTIONS = {
-    "add": Ptype.arithmetic,
-    "sub": Ptype.arithmetic,
-    "mul": Ptype.arithmetic,
     "matmul": Ptype.arithmetic,
     "conv1d": Ptype.arithmetic,
     "conv2d": Ptype.arithmetic,
@@ -1225,22 +1350,16 @@ OOP_BINARY_FUNCTIONS = {
     "conv_transpose2d": Ptype.arithmetic,
     "dot": Ptype.arithmetic,
     "ger": Ptype.arithmetic,
-    "__xor__": Ptype.binary,
     "__or__": Ptype.binary,
-    "__and__": Ptype.binary,
 }
 
 INPLACE_UNARY_FUNCTIONS = {
-    "neg_": Ptype.arithmetic,
     "invert_": Ptype.binary,
     "lshift_": Ptype.binary,
     "rshift_": Ptype.binary,
 }
 
 INPLACE_BINARY_FUNCTIONS = {
-    "add_": Ptype.arithmetic,
-    "sub_": Ptype.arithmetic,
-    "mul_": Ptype.arithmetic,
     "__ior__": Ptype.binary,
     "__ixor__": Ptype.binary,
     "__iand__": Ptype.binary,

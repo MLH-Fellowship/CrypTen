@@ -32,34 +32,43 @@ class TestMPC(object):
         return get_random_test_tensor(device=self.device, *args, **kwargs)
 
     def _check(self, encrypted_tensor, reference, msg, dst=None, tolerance=None):
+
         if tolerance is None:
             tolerance = getattr(self, "default_tolerance", 0.05)
         tensor = encrypted_tensor.get_plain_text(dst=dst)
         if dst is not None and dst != self.rank:
             self.assertIsNone(tensor)
-            return
+        else:
+            # Check sizes match
+            self.assertTrue(tensor.size() == reference.size(), msg)
 
-        # Check sizes match
-        self.assertTrue(tensor.size() == reference.size(), msg)
+            self.assertTrue(is_float_tensor(reference), "reference must be a float")
 
-        self.assertTrue(is_float_tensor(reference), "reference must be a float")
+            if tensor.device != reference.device:
+                tensor = tensor.cpu()
+                reference = reference.cpu()
 
-        if tensor.device != reference.device:
-            tensor = tensor.cpu()
-            reference = reference.cpu()
+            diff = (tensor - reference).abs_()
+            norm_diff = diff.div(tensor.abs() + reference.abs()).abs_()
+            test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.1)
+            test_passed = test_passed.gt(0).all().item() == 1
+            if not test_passed:
+                logging.info(msg)
+                logging.info("Result %s" % tensor)
+                logging.info("Reference %s" % reference)
+                logging.info("Result - Reference = %s" % (tensor - reference))
+            self.assertTrue(test_passed, msg=msg)
+            self.assertTrue(hasattr(encrypted_tensor, "_mac"), "_mac attribute failed to propagate")
 
-        diff = (tensor - reference).abs_()
-        norm_diff = diff.div(tensor.abs() + reference.abs()).abs_()
-        test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.1)
-        test_passed = test_passed.gt(0).all().item() == 1
-        if not test_passed:
-            logging.info(msg)
-            logging.info("Result %s" % tensor)
-            logging.info("Reference %s" % reference)
-            logging.info("Result - Reference = %s" % (tensor - reference))
-        self.assertTrue(test_passed, msg=msg)
-        self.assertTrue(hasattr(encrypted_tensor, "_mac"), "_mac attribute failed to propagate")
-        self.assertEqual(encrypted_tensor._mac, 0, "_mac attribute has incorrect value")
+        if dst is None or dst == self.rank:
+            tensor = encrypted_tensor._tensor.reveal(dst=dst)
+            alpha = MPCTensor.alpha.reveal(dst=dst)
+            mac = encrypted_tensor._mac.reveal(dst=dst)
+            self.assertTrue((alpha * tensor == mac).all(), msg=f"{msg} - Mac Arithmetic Mismatch")
+        elif dst is not None:
+            self.assertIsNone(encrypted_tensor._tensor.reveal(dst=dst))
+            self.assertIsNone(MPCTensor.alpha.reveal(dst=dst))
+            self.assertIsNone(encrypted_tensor._mac.reveal(dst=dst))
 
     def _check_tuple(self, encrypted_tuple, reference, msg, tolerance=None):
         self.assertTrue(isinstance(encrypted_tuple, tuple))
@@ -209,6 +218,7 @@ class TestMPC(object):
 
                 reference = getattr(tensor1, func)(tensor2)
                 encrypted_out = getattr(encrypted, func)(encrypted2)
+
                 self._check(
                     encrypted_out,
                     reference,
@@ -220,7 +230,7 @@ class TestMPC(object):
                     self._check(
                         encrypted,
                         reference,
-                        "%s %s failed"
+                        "%s %s did not modify input as expected"
                         % ("private" if tensor_type == MPCTensor else "public", func),
                     )
                 else:
@@ -228,7 +238,7 @@ class TestMPC(object):
                     self._check(
                         encrypted,
                         tensor1,
-                        "%s %s failed"
+                        "%s %s modified input"
                         % ("private" if tensor_type == MPCTensor else "public", func),
                     )
 
@@ -241,11 +251,12 @@ class TestMPC(object):
                 encrypted_out = getattr(encrypted1, func)(encrypted2)
                 self._check(encrypted_out, reference, "private %s failed" % func)
 
-            tensor = self._get_random_test_tensor(is_float=True)
-            reference = tensor * tensor
-            encrypted = MPCTensor(tensor)
-            encrypted_out = encrypted.square()
-            self._check(encrypted_out, reference, "square failed")
+        # test square
+        tensor = self._get_random_test_tensor(is_float=True)
+        reference = tensor * tensor
+        encrypted = MPCTensor(tensor)
+        encrypted_out = encrypted.square()
+        self._check(encrypted_out, reference, "square failed")
 
         # Test radd, rsub, and rmul
         reference = 2 + tensor1
